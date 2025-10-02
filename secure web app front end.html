@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Auth Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for aesthetic enhancements */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .card {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .btn-primary {
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #3182ce;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Global Feedback/Alert Box (Custom Modal) -->
+    <div id="feedback-container" class="fixed top-4 right-4 z-50"></div>
+
+    <!-- Main Container -->
+    <div class="w-full max-w-md">
+
+        <!-- Header -->
+        <h1 class="text-3xl font-extrabold text-gray-800 text-center mb-8">Secure App Demo</h1>
+
+        <!-- Page: Login -->
+        <div id="login-page" class="card bg-white p-8 rounded-xl w-full">
+            <h2 class="text-2xl font-semibold mb-6 text-center">Login</h2>
+            
+            <div class="mb-4">
+                <label for="login-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="login-email" placeholder="user@example.com" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <div class="mb-6">
+                <label for="login-password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="login-password" placeholder="Min 8 characters" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <button onclick="handleLogin()" class="btn-primary w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition duration-150">
+                Secure Login
+            </button>
+
+            <p class="mt-4 text-center text-sm text-gray-600">
+                Don't have an account? 
+                <a href="#" onclick="showPage('signup')" class="text-blue-600 hover:text-blue-800 font-medium">Sign Up</a>
+            </p>
+        </div>
+
+        <!-- Page: Signup (Hidden by default) -->
+        <div id="signup-page" class="card bg-white p-8 rounded-xl w-full hidden">
+            <h2 class="text-2xl font-semibold mb-6 text-center">Sign Up</h2>
+            
+            <div class="mb-4">
+                <label for="signup-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="signup-email" placeholder="user@example.com" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <div class="mb-6">
+                <label for="signup-password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="signup-password" placeholder="Min 8 characters" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <button onclick="handleSignup()" class="btn-primary w-full bg-green-600 text-white p-3 rounded-lg font-bold hover:bg-green-700 transition duration-150">
+                Register Securely
+            </button>
+
+            <p class="mt-4 text-center text-sm text-gray-600">
+                Already registered? 
+                <a href="#" onclick="showPage('login')" class="text-blue-600 hover:text-blue-800 font-medium">Log In</a>
+            </p>
+        </div>
+
+        <!-- Page: Dashboard (Hidden by default) -->
+        <div id="dashboard-page" class="card bg-white p-8 rounded-xl w-full hidden text-center">
+            <h2 class="text-3xl font-bold text-blue-600 mb-4">Welcome Back, <span id="dashboard-user-email"></span>!</h2>
+            <p class="text-gray-700 mb-6">This is your secure dashboard.</p>
+            
+            <!-- Example of displaying sanitized user content (XSS protection) -->
+            <div class="mt-4 p-4 border rounded-lg bg-gray-50">
+                <p class="font-semibold text-left text-gray-800 mb-2">User Content Example:</p>
+                <div id="user-content-display" class="text-left p-3 bg-white rounded border border-dashed">
+                    <!-- Sanitized user input will appear here -->
+                    <p class="text-sm text-gray-500">No content available. Try using the input field below!</p>
+                </div>
+                
+                <textarea id="user-content-input" rows="3" placeholder="Enter content (XSS attempts blocked)" class="w-full mt-3 p-2 border rounded-lg"></textarea>
+                <button onclick="updateUserContent()" class="mt-3 bg-indigo-500 text-white p-2 rounded-lg text-sm hover:bg-indigo-600">
+                    Submit Content (Sanitized)
+                </button>
+            </div>
+
+            <button onclick="logout()" class="mt-8 bg-red-500 text-white p-3 rounded-lg font-bold hover:bg-red-600 transition duration-150">
+                Logout (Clear Session)
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- SECURITY & UTILITY FUNCTIONS ---
+
+        /**
+         * @SERVER_SIMULATION: Simulates a secure, one-way hash (like Argon2 or bcrypt).
+         * NOTE: Using btoa/atob is a WEAK, reversible simulation for demonstration ONLY.
+         * NEVER use this in a real application.
+         * @param {string} password - The plain text password.
+         * @returns {string} The simulated hash.
+         */
+        const simulateHash = (password) => {
+            // In a real app, this is where a strong hashing algorithm (bcrypt/Argon2)
+            // with a unique salt would run on the server.
+            return btoa(password); // DANGER: This is easily reversible. For demo only.
+        };
+
+        /**
+         * @SECURITY_MEASURE: Performs input validation (Client-Side).
+         * This is for UX/preventing unnecessary server load, but the server MUST re-validate.
+         * @param {string} value - The input value.
+         * @param {string} type - The type of input ('email', 'password').
+         * @returns {string | null} Error message or null if valid.
+         */
+        const validateInput = (value, type) => {
+            if (!value || value.trim() === '') {
+                return `${type.charAt(0).toUpperCase() + type.slice(1)} cannot be empty.`;
+            }
+
+            if (type === 'email') {
+                // Simple email regex. Real-world regex is more complex.
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; 
+                if (!emailRegex.test(value)) {
+                    return 'Invalid email format.';
+                }
+            } else if (type === 'password') {
+                if (value.length < 8) {
+                    return 'Password must be at least 8 characters long.';
+                }
+                // Good practice: Require complexity (uppercase, number, symbol)
+                if (!/[A-Z]/.test(value) || !/[0-9]/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
+                    return 'Password must contain uppercase, number, and symbol.';
+                }
+            }
+            return null; // Valid
+        };
+
+        /**
+         * @SECURITY_MEASURE: Sanitizes input to prevent XSS (Cross-Site Scripting).
+         * Removes potentially dangerous HTML tags and characters before display.
+         * @param {string} input - The raw user input.
+         * @returns {string} The sanitized string.
+         */
+        const sanitizeInput = (input) => {
+            if (!input) return '';
+            // 1. Convert <, > to their HTML entity equivalents
+            let sanitized = input.replace(/&/g, '&amp;')
+                                 .replace(/</g, '&lt;')
+                                 .replace(/>/g, '&gt;');
+            
+            // 2. Remove other dangerous JS-specific attributes if present (e.g. on-event handlers)
+            // Note: For full protection, use a dedicated library like DOMPurify (server-side and client-side).
+            return sanitized;
+        };
+
+        /**
+         * @UTILITY: Displays a temporary feedback message to the user.
+         * @param {string} message - The message to display.
+         * @param {boolean} isError - If true, displays as an error (red).
+         */
+        const showFeedback = (message, isError = false) => {
+            const container = document.getElementById('feedback-container');
+            const colorClass = isError ? 'bg-red-500' : 'bg-green-500';
+
+            const feedbackEl = document.createElement('div');
+            feedbackEl.className = `${colorClass} text-white px-4 py-3 rounded-lg shadow-lg mb-3 transition-opacity duration-300`;
+            feedbackEl.innerHTML = sanitizeInput(message);
+            
+            container.appendChild(feedbackEl);
+
+            // Automatically remove the message after 4 seconds
+            setTimeout(() => {
+                feedbackEl.style.opacity = '0';
+                setTimeout(() => {
+                    container.removeChild(feedbackEl);
+                }, 300);
+            }, 4000);
+        };
+
+        // --- AUTHENTICATION LOGIC ---
+
+        // @SERVER_SIMULATION: Simulates a user database (using localStorage)
+        // Key: 'secureAppUsers'
+        const USERS_DB_KEY = 'secureAppUsers';
+
+        /**
+         * Handles user sign-up.
+         */
+        const handleSignup = () => {
+            const emailInput = document.getElementById('signup-email');
+            const passwordInput = document.getElementById('signup-password');
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+
+            // 1. Client-Side Input Validation
+            let error = validateInput(email, 'email') || validateInput(password, 'password');
+            if (error) {
+                showFeedback(error, true);
+                return;
+            }
+
+            // 2. XSS and SQL Injection Prevention (Sanitization)
+            // For a signup/login, the primary risk is storing malicious data.
+            // By validating the format (email regex) and ensuring it's not arbitrary HTML,
+            // we mitigate XSS and prevent SQLi (simulated) by not using string concatenation 
+            // and validating the input type.
+            const sanitizedEmail = sanitizeInput(email);
+
+            // 3. Database Check (Simulated)
+            const users = JSON.parse(localStorage.getItem(USERS_DB_KEY) || '{}');
+            if (users[sanitizedEmail]) {
+                showFeedback('User already exists with this email.', true);
+                return;
+            }
+
+            // 4. Password Hashing (Simulated)
+            const hashedPassword = simulateHash(password);
+
+            // 5. Store User (Simulated Database Write)
+            users[sanitizedEmail] = { hash: hashedPassword, content: 'Default user content.' };
+            localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
+
+            showFeedback('Registration successful! Please log in.');
+            emailInput.value = '';
+            passwordInput.value = '';
+            showPage('login');
+        };
+
+        /**
+         * Handles user login and session creation.
+         */
+        const handleLogin = () => {
+            const emailInput = document.getElementById('login-email');
+            const passwordInput = document.getElementById('login-password');
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+
+            // 1. Client-Side Input Validation
+            let error = validateInput(email, 'email') || validateInput(password, 'password');
+            if (error) {
+                showFeedback(error, true);
+                return;
+            }
+
+            // 2. XSS and SQL Injection Prevention
+            const sanitizedEmail = sanitizeInput(email);
+
+            // 3. Database Lookup (Simulated)
+            const users = JSON.parse(localStorage.getItem(USERS_DB_KEY) || '{}');
+            const user = users[sanitizedEmail];
+
+            if (!user) {
+                // Generic error message to prevent user enumeration
+                showFeedback('Invalid credentials.', true); 
+                return;
+            }
+
+            // 4. Password Verification (Simulated)
+            const isPasswordValid = simulateHash(password) === user.hash;
+
+            if (!isPasswordValid) {
+                // Generic error message to prevent user enumeration
+                showFeedback('Invalid credentials.', true);
+                return;
+            }
+
+            // 5. Session Management (Simulated: Generating and storing a token)
+            // @SECURITY_MEASURE: Session Token Generation
+            // In a real app, this token should be a secure, cryptographically random JWT or opaque token,
+            // stored in an HttpOnly, Secure cookie.
+            const sessionToken = crypto.randomUUID(); 
+            localStorage.setItem('sessionToken', sessionToken);
+            localStorage.setItem('userEmail', sanitizedEmail); // Store basic user ID
+
+            showFeedback(`Welcome, ${sanitizedEmail}! Session started.`);
+            emailInput.value = '';
+            passwordInput.value = '';
+            initApp(); // Go to dashboard
+        };
+
+        /**
+         * Handles user logout and session destruction.
+         */
+        const logout = () => {
+            // @SECURITY_MEASURE: Session Destruction
+            localStorage.removeItem('sessionToken');
+            localStorage.removeItem('userEmail');
+            showFeedback('Logged out successfully.');
+            showPage('login');
+        };
+
+        /**
+         * Updates the user's content on the dashboard, demonstrating XSS prevention.
+         */
+        const updateUserContent = () => {
+            const rawContent = document.getElementById('user-content-input').value;
+            const displayEl = document.getElementById('user-content-display');
+            const userEmail = localStorage.getItem('userEmail');
+
+            if (!userEmail) {
+                showFeedback('Session error. Please log in again.', true);
+                logout();
+                return;
+            }
+
+            // @SECURITY_MEASURE: XSS Prevention
+            const sanitizedContent = sanitizeInput(rawContent);
+            
+            // Display the sanitized content
+            displayEl.innerHTML = `<p>${sanitizedContent || 'No content available.'}</p>`;
+            
+            // Simulate saving to the 'database'
+            const users = JSON.parse(localStorage.getItem(USERS_DB_KEY) || '{}');
+            if (users[userEmail]) {
+                users[userEmail].content = sanitizedContent;
+                localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
+                showFeedback('Content saved and sanitized successfully.');
+            }
+
+            document.getElementById('user-content-input').value = '';
+        };
+
+        // --- UI AND NAVIGATION ---
+
+        /**
+         * Shows the specified page and hides others.
+         * @param {string} pageId - 'login', 'signup', or 'dashboard'.
+         */
+        const showPage = (pageId) => {
+            const pages = ['login-page', 'signup-page', 'dashboard-page'];
+            pages.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.add('hidden');
+                }
+            });
+
+            const targetPage = document.getElementById(`${pageId}-page`);
+            if (targetPage) {
+                targetPage.classList.remove('hidden');
+
+                if (pageId === 'dashboard') {
+                    loadDashboardData();
+                }
+            }
+        };
+
+        /**
+         * Loads user-specific data into the dashboard.
+         */
+        const loadDashboardData = () => {
+            const userEmail = localStorage.getItem('userEmail');
+            if (userEmail) {
+                document.getElementById('dashboard-user-email').textContent = sanitizeInput(userEmail);
+                
+                const users = JSON.parse(localStorage.getItem(USERS_DB_KEY) || '{}');
+                const user = users[userEmail];
+                const displayEl = document.getElementById('user-content-display');
+                
+                // Load previously saved, sanitized content
+                if (user && user.content) {
+                     displayEl.innerHTML = `<p>${sanitizeInput(user.content)}</p>`;
+                } else {
+                     displayEl.innerHTML = '<p class="text-sm text-gray-500">No content available.</p>';
+                }
+
+            }
+        };
+
+        /**
+         * Checks session status and initializes the correct page.
+         */
+        const initApp = () => {
+            const sessionToken = localStorage.getItem('sessionToken');
+            const userEmail = localStorage.getItem('userEmail');
+
+            // @SECURITY_MEASURE: Session Validation (Simulated)
+            if (sessionToken && userEmail) {
+                // In a real app, you would send the token to the server to verify
+                // its validity (expiration, integrity).
+                showPage('dashboard');
+            } else {
+                showPage('login');
+            }
+        };
+
+        // Initialize the application state on load
+        window.onload = initApp;
+
+    </script>
+</body>
+</html>
